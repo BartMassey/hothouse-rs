@@ -1,7 +1,7 @@
 #![no_main]
 #![no_std]
 
-use hothouse::{Hothouse, ToggleState, hal::prelude::*};
+use hothouse::{Hothouse, ToggleState, audio_passthrough, hal::prelude::*};
 
 use cortex_m_rt::entry;
 use num_traits::float::Float;
@@ -9,7 +9,7 @@ use panic_halt as _;
 
 #[entry]
 fn main() -> ! {
-    let mut hh = Hothouse::take();
+    let mut hh = Hothouse::take(audio_passthrough);
     hh.set_led(2, true).unwrap();
 
     let pots = [[4, 1], [5, 2], [6, 3]];

@@ -4,9 +4,7 @@
 use core::cell::RefCell;
 
 pub use cortex_m;
-pub use daisy as board;
-pub use daisy::hal;
-pub use daisy::pac;
+pub use daisy::{self as board, hal, pac, audio::{BLOCK_LENGTH, FS}};
 
 use cortex_m::interrupt::Mutex;
 use daisy::{
@@ -16,13 +14,22 @@ use daisy::{
     Board,
 };
 
-static AUDIO_INTERFACE: Mutex<RefCell<Option<audio::Interface>>> =
+static AUDIO_INTERFACE: Mutex<RefCell<Option<AudioState>>> =
     Mutex::new(RefCell::new(None));
 
 #[derive(Debug)]
 pub enum HothouseError {
     BadIndex,
     SwitchFailure,
+}
+
+pub type AudioFrame = (f32, f32);
+pub type AudioHandler = fn(u64, &mut [AudioFrame; BLOCK_LENGTH]);
+
+pub struct AudioState {
+    tick: u64,
+    audio: audio::Interface,
+    handler: AudioHandler,
 }
 
 pub struct Knobs {
@@ -72,8 +79,10 @@ pub struct Hothouse {
     pub footswitches: Footswitches,
 }
 
+pub fn audio_passthrough(_tick: u64, _frames: &mut [AudioFrame; BLOCK_LENGTH]) {}
+
 impl Hothouse {
-    pub fn take() -> Self {
+    pub fn take(handler: AudioHandler) -> Self {
         let mut cp = cortex_m::Peripherals::take().unwrap();
         let dp = pac::Peripherals::take().unwrap();
         let board = Board::take().unwrap();
@@ -89,8 +98,9 @@ impl Hothouse {
 
         let audio = daisy::board_split_audio!(ccdr, pins);
         let audio = audio.spawn().unwrap();
+        let audio_state = AudioState { audio, tick: 0, handler };
         cortex_m::interrupt::free(|cs| {
-            *AUDIO_INTERFACE.borrow(cs).borrow_mut() = Some(audio);
+            *AUDIO_INTERFACE.borrow(cs).borrow_mut() = Some(audio_state);
         });
 
         let knobs = Knobs {
@@ -198,17 +208,13 @@ impl Hothouse {
 fn DMA1_STR1() {
     cortex_m::interrupt::free(|cs| {
         // Acquire the audio interface from the global.
-        if let Some(audio_interface) = AUDIO_INTERFACE.borrow(cs).borrow_mut().as_mut() {
+        if let Some(audio_state) = AUDIO_INTERFACE.borrow(cs).borrow_mut().as_mut() {
             // Read input audio from the buffer and write back desired
             // output samples.
-            audio_interface
-                .handle_interrupt_dma1_str1(|audio_buffer| {
-                    for frame in audio_buffer {
-                        let (left, right) = *frame;
-                        *frame = (right * 0.8, left * 0.8);
-                    }
-                })
-                .unwrap();
+            audio_state.audio.handle_interrupt_dma1_str1(|audio_buffer| {
+                (audio_state.handler)(audio_state.tick, audio_buffer);
+                audio_state.tick += 1;
+            }).unwrap();
         }
     });
 }
