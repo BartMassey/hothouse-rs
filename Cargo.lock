@@ -152,7 +152,6 @@ version = "0.1.0"
 dependencies = [
  "cortex-m",
  "daisy",
- "stm32h7xx-hal",
 ]
 
 [[package]]

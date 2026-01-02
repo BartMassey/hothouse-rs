@@ -6,7 +6,6 @@ edition = "2024"
 [dependencies]
 cortex-m = "0.7.7"
 daisy = "0.11.0"
-stm32h7xx-hal = { version = "0.16.0", features = ["stm32h750v", "rt", "revision_v", "usb_hs", "xspi", "fmc"] }
 
 [features]
 default = ["seed_1_2"]
