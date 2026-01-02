@@ -1,14 +1,23 @@
 #![no_main]
 #![no_std]
 
-extern crate cortex_m;
+use core::cell::RefCell;
+
+pub use cortex_m;
 pub use daisy as board;
 pub use daisy::hal;
 pub use daisy::pac;
+
+use cortex_m::interrupt::Mutex;
 use daisy::{
+    audio,
     hal::{prelude::*, adc, delay, gpio, rcc},
+    pac::interrupt,
     Board,
 };
+
+static AUDIO_INTERFACE: Mutex<RefCell<Option<audio::Interface>>> =
+    Mutex::new(RefCell::new(None));
 
 #[derive(Debug)]
 pub enum HothouseError {
@@ -65,12 +74,24 @@ pub struct Hothouse {
 
 impl Hothouse {
     pub fn take() -> Self {
-        let cp = cortex_m::Peripherals::take().unwrap();
+        let mut cp = cortex_m::Peripherals::take().unwrap();
         let dp = pac::Peripherals::take().unwrap();
         let board = Board::take().unwrap();
 
+        // Using caches should provide a major performance boost.
+        cp.SCB.enable_icache();
+        // NOTE: Data caching requires cache management around all use of DMA.
+        // The `daisy` crate already handles that for audio processing.
+        cp.SCB.enable_dcache(&mut cp.CPUID);
+
         let ccdr = daisy::board_freeze_clocks!(board, dp);
         let pins = daisy::board_split_gpios!(board, ccdr, dp);
+
+        let audio = daisy::board_split_audio!(ccdr, pins);
+        let audio = audio.spawn().unwrap();
+        cortex_m::interrupt::free(|cs| {
+            *AUDIO_INTERFACE.borrow(cs).borrow_mut() = Some(audio);
+        });
 
         let knobs = Knobs {
             knob1: pins.GPIO.PIN_16.into_analog(),
@@ -167,4 +188,27 @@ impl Hothouse {
             _ => Err(HothouseError::BadIndex),
         }
     }
+}
+
+// Audio is tranfered from the input and to the input
+// periodically through DMA.  Every time Daisy is done
+// transferring data, it will ask for more by triggering the
+// DMA 1 Stream 1 interrupt.
+#[interrupt]
+fn DMA1_STR1() {
+    cortex_m::interrupt::free(|cs| {
+        // Acquire the audio interface from the global.
+        if let Some(audio_interface) = AUDIO_INTERFACE.borrow(cs).borrow_mut().as_mut() {
+            // Read input audio from the buffer and write back desired
+            // output samples.
+            audio_interface
+                .handle_interrupt_dma1_str1(|audio_buffer| {
+                    for frame in audio_buffer {
+                        let (left, right) = *frame;
+                        *frame = (right * 0.8, left * 0.8);
+                    }
+                })
+                .unwrap();
+        }
+    });
 }
