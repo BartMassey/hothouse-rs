@@ -1,10 +1,26 @@
+/*!
+
+Cleveland Music Hothouse pedal support crate. This crate
+wraps the [`daisy`](https://crates.io/crates/daisy) crate to
+provide Hothouse-specific support and convenience functions.
+
+*/
+
 #![no_main]
 #![no_std]
 
 use core::cell::RefCell;
 
+/// Underlying processor support crate.
 pub use cortex_m;
-pub use daisy::{self as board, hal, pac, audio::{BLOCK_LENGTH, FS}};
+/// Underlying `daisy` crate modules.
+pub use daisy::{self as board, hal, pac};
+pub use daisy::audio::{
+    /// Length of audio block in frames.
+    BLOCK_LENGTH,
+    /// Frame rate in frames per second.
+    FS,
+}};
 
 use cortex_m::interrupt::Mutex;
 use daisy::{
@@ -17,21 +33,31 @@ use daisy::{
 static AUDIO_INTERFACE: Mutex<RefCell<Option<AudioState>>> =
     Mutex::new(RefCell::new(None));
 
+/// Errors resulting from Hothouse things.
 #[derive(Debug)]
 pub enum HothouseError {
+    /// Index for operation was out of range. Note that Hothouse
+    /// indexes are 1-based.
     BadIndex,
+    /// A Hothouse toggle switch was found in an impossible state.
     SwitchFailure,
 }
 
+/// Left and right audio channels.
 pub type AudioFrame = (f32, f32);
+
+/// An audio handler takes a tick count in sample blocks and modifies
+/// the given block as desired to produce effected audio.
 pub type AudioHandler = fn(u64, &mut [AudioFrame; BLOCK_LENGTH]);
 
-pub struct AudioState {
+struct AudioState {
     tick: u64,
     audio: audio::Interface,
     handler: AudioHandler,
 }
 
+/// Per-knob GPIO assignments. These are all set up as
+/// analog inputs.
 pub struct Knobs {
     pub knob1: gpio::gpioa::PA3<gpio::Analog>,
     pub knob2: gpio::gpiob::PB1<gpio::Analog>,
@@ -41,47 +67,72 @@ pub struct Knobs {
     pub knob6: gpio::gpioc::PC4<gpio::Analog>,
 }
 
+/// A pair of GPIOs for a single-pole double-throw toggle
+/// switch. These GPIOs are set up as pull-up inputs.
 pub struct Spdt<Down, Up> {
     pub down: Down,
     pub up: Up,
 }
 
+/// The GPIOs for the three toggle switches.
 pub struct Toggles {
     pub sw1: Spdt<gpio::gpiob::PB5<gpio::Input>, gpio::gpiob::PB4<gpio::Input>>,
     pub sw2: Spdt<gpio::gpiog::PG11<gpio::Input>, gpio::gpiog::PG10<gpio::Input>>,
     pub sw3: Spdt<gpio::gpioc::PC12<gpio::Input>, gpio::gpiod::PD2<gpio::Input>>,
 }
 
+/// Representation of the state of a single-pole
+/// double-throw toggle switch.
 pub enum ToggleState {
     Down,
     Centered,
     Up,
 }
 
+/// GPIO assignments for the LEDs. These GPIOs are set up as
+/// push-pull outputs.
 pub struct Leds {
     pub led1: gpio::gpioa::PA5<gpio::Output>,
     pub led2: gpio::gpioa::PA4<gpio::Output>,
 }
 
+/// GPIO assignments for the momentary contact footswitches.
+/// These GPIOs are set up as pull-up inputs.
 pub struct Footswitches {
     pub fsw1: gpio::gpioa::PA0<gpio::Input>,
     pub fsw2: gpio::gpiod::PD11<gpio::Input>,
 }
 
+/// The ongoing state of the Hothouse software.
 pub struct Hothouse {
+    /// The `daisy::Board` struct.
     pub board: Board,
+    /// A preconfigured delay in case it is useful.
     pub delay: hal::delay::Delay,
+    /// System clocks for making new peripherals.
     pub clocks: rcc::CoreClocks,
-    knob_adc: adc::Adc<pac::ADC1, adc::Enabled>,
+    /// The ADC set up to read the knobs.
+    pub knob_adc: adc::Adc<pac::ADC1, adc::Enabled>,
+    /// The knobs.
     pub knobs: Knobs,
+    /// The LEDs.
     pub leds: Leds,
+    /// The toggle switches.
     pub toggles: Toggles,
+    /// The foot switches.
     pub footswitches: Footswitches,
 }
 
+/// Pure pass-through convenience handler for audio.
 pub fn audio_passthrough(_tick: u64, _frames: &mut [AudioFrame; BLOCK_LENGTH]) {}
 
 impl Hothouse {
+    /// Initialize the Hothouse and return the state
+    /// structure.  This also initializes internal global
+    /// state for the audio interrupt handler.
+    ///
+    /// An audio handler must be provided: use
+    /// [audio_passthrough] as needed.
     pub fn take(handler: AudioHandler) -> Self {
         let mut cp = cortex_m::Peripherals::take().unwrap();
         let dp = pac::Peripherals::take().unwrap();
@@ -152,6 +203,13 @@ impl Hothouse {
         Self { board, delay, clocks: ccdr.clocks, knob_adc, knobs, toggles, leds, footswitches }
     }
 
+    /// Get a value between 0.0 and 1.0 for the specified
+    /// knob.  Knob ids are 1-based.
+    ///
+    /// # Errors
+    ///
+    /// Returns [HothouseError::BadIndex] if the `knob_id` is
+    /// out of range.
     pub fn read_knob(&mut self, knob_id: usize) -> Result<f32, HothouseError> {
         let position: u32 = match knob_id {
             1 => self.knob_adc.read(&mut self.knobs.knob1),
@@ -165,6 +223,15 @@ impl Hothouse {
         Ok(position as f32 / 65_635.0)
     }
 
+    /// Get the position of the specified toggle switch.
+    /// Switch ids are 1-based.
+    ///
+    /// # Errors
+    ///
+    /// Returns [HothouseError::BadIndex] if the `toggle_id`
+    /// is out of range. Returns
+    /// [HothouseError::SwitchFailure] if the switch appears
+    /// to be simultaneously in the up and down positions.
     pub fn read_toggle(&mut self, toggle_id: usize) -> Result<ToggleState, HothouseError> {
         let sets = match toggle_id {
             1 => (self.toggles.sw1.down.is_high(), self.toggles.sw1.up.is_high()),
@@ -180,6 +247,13 @@ impl Hothouse {
         }
     }
 
+    /// Set the specified LED to the specified state.  LED
+    /// ids are 1-based.
+    ///
+    /// # Errors
+    ///
+    /// Returns [HothouseError::BadIndex] if the `led_id` is
+    /// out of range.
     pub fn set_led(&mut self, led_id: usize, state: bool) -> Result<(), HothouseError> {
         match (led_id, state) {
             (1, true) => self.leds.led1.set_high(),
@@ -191,6 +265,13 @@ impl Hothouse {
         Ok(())
     }
 
+    /// Get the position of the specified footswitch.
+    /// Footswitch ids are 1-based.
+    ///
+    /// # Errors
+    ///
+    /// Returns [HothouseError::BadIndex] if the `fsw_id`
+    /// is out of range.
     pub fn read_footswitch(&mut self, fsw_id: usize) -> Result<bool, HothouseError> {
         match fsw_id {
             1 => Ok(self.footswitches.fsw1.is_low()),
