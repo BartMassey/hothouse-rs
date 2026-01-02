@@ -1,0 +1,18 @@
+[package]
+name = "hothouse-rs"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+cortex-m = "0.7.7"
+daisy = "0.11.0"
+stm32h7xx-hal = { version = "0.16.0", features = ["stm32h750v", "rt", "revision_v", "usb_hs", "xspi", "fmc"] }
+
+[features]
+default = ["seed_1_2"]
+seed = ["daisy/seed"]
+seed_1_1 = ["daisy/seed_1_1"]
+seed_1_2 = ["daisy/seed_1_2"]
+sampling_rate_96khz = ["daisy/sampling_rate_96khz"]
+block_length_64 = ["daisy/block_length_64"]
+defmt = ["daisy/defmt"]
