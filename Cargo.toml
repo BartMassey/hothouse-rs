@@ -7,6 +7,15 @@ edition = "2024"
 cortex-m = "0.7.7"
 daisy = "0.11.0"
 
+[dev-dependencies]
+cortex-m-rt = "0.7.5"
+panic-halt = "1.0.0"
+
+[dev-dependencies.num-traits]
+version = "0.2.19"
+default-features = false
+features = ["libm"]
+
 [features]
 default = ["seed_1_2"]
 seed = ["daisy/seed"]
@@ -16,6 +25,3 @@ sampling_rate_96khz = ["daisy/sampling_rate_96khz"]
 block_length_64 = ["daisy/block_length_64"]
 defmt = ["daisy/defmt"]
 
-[dev-dependencies]
-cortex-m-rt = "0.7.5"
-panic-halt = "1.0.0"
