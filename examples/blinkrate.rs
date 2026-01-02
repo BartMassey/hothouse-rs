@@ -9,9 +9,10 @@ use panic_halt as _;
 #[entry]
 fn main() -> ! {
     let mut hh = Hothouse::take();
+    hh.set_led(2, true).unwrap();
 
     let pots = [[4, 1], [5, 2], [6, 3]];
-    let mut rate: Option<f32> = None;
+    let mut rate: Option<f32> = Some(10.0);
     let mut lit = false;
 
     loop {
@@ -21,6 +22,7 @@ fn main() -> ! {
             lit = !lit;
             hh.set_led(1, lit).unwrap();
         }
+
         rate = None;
         for (i, ps) in pots.iter().enumerate() {
             let t = hh.read_toggle(i).unwrap();
@@ -31,6 +33,7 @@ fn main() -> ! {
             };
             let f = hh.read_knob(p).unwrap();
             rate = Some(30.0 * f);
+            break;
         }
     }
 }
