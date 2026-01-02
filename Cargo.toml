@@ -2,6 +2,22 @@
 name = "hothouse"
 version = "0.1.0"
 edition = "2024"
+authors = [ "Bart Massey <bart.massey@gmail.com>" ]
+description = "A support package for the Cleveland Music Hothouse pedal"
+license = "MIT"
+repository = "https://github.com/BartMassey/hothouse-rs"
+readme = "README.md"
+categories = [
+    "embedded",
+    "hardware-support",
+    "no-std",
+    "multimedia::audio",
+]
+keywords = [
+    "daisy",
+    "hothouse",
+    "audio",
+]
 
 [dependencies]
 cortex-m = "0.7.7"
