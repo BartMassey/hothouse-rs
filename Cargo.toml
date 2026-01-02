@@ -15,3 +15,7 @@ seed_1_2 = ["daisy/seed_1_2"]
 sampling_rate_96khz = ["daisy/sampling_rate_96khz"]
 block_length_64 = ["daisy/block_length_64"]
 defmt = ["daisy/defmt"]
+
+[dev-dependencies]
+cortex-m-rt = "0.7.5"
+panic-halt = "1.0.0"

@@ -6,10 +6,11 @@ pub use daisy as board;
 pub use daisy::hal;
 pub use daisy::pac;
 use daisy::{
-    hal::{prelude::*, adc, delay, gpio},
+    hal::{prelude::*, adc, delay, gpio, rcc},
     Board,
 };
 
+#[derive(Debug)]
 pub enum HothouseError {
     BadIndex,
     SwitchFailure,
@@ -53,6 +54,8 @@ pub struct Footswitches {
 
 pub struct Hothouse {
     pub board: Board,
+    pub delay: hal::delay::Delay,
+    pub clocks: rcc::CoreClocks,
     knob_adc: adc::Adc<pac::ADC1, adc::Enabled>,
     pub knobs: Knobs,
     pub leds: Leds,
@@ -115,7 +118,7 @@ impl Hothouse {
             .enable();
         knob_adc.set_resolution(adc::Resolution::SixteenBit);
 
-        Self { board, knob_adc, knobs, toggles, leds, footswitches }
+        Self { board, delay, clocks: ccdr.clocks, knob_adc, knobs, toggles, leds, footswitches }
     }
 
     pub fn read_knob(&mut self, knob_id: usize) -> Result<f32, HothouseError> {
