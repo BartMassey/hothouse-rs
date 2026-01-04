@@ -14,13 +14,12 @@ use core::cell::RefCell;
 /// Underlying processor support crate.
 pub use cortex_m;
 /// Underlying `daisy` crate modules.
-pub use daisy::{self as board, hal, pac};
-pub use daisy::audio::{
-    /// Length of audio block in frames.
-    BLOCK_LENGTH,
-    /// Frame rate in frames per second.
-    FS,
-}};
+pub use daisy::{
+    self as board,
+    audio::{BLOCK_LENGTH, FS},
+    hal,
+    pac,
+};
 
 use cortex_m::interrupt::Mutex;
 use daisy::{
@@ -133,7 +132,7 @@ impl Hothouse {
     ///
     /// An audio handler must be provided: use
     /// [audio_passthrough] as needed.
-    pub fn take(handler: AudioHandler) -> Self {
+    pub fn take() -> Self {
         let mut cp = cortex_m::Peripherals::take().unwrap();
         let dp = pac::Peripherals::take().unwrap();
         let board = Board::take().unwrap();
@@ -149,6 +148,7 @@ impl Hothouse {
 
         let audio = daisy::board_split_audio!(ccdr, pins);
         let audio = audio.spawn().unwrap();
+        let handler = audio_passthrough;
         let audio_state = AudioState { audio, tick: 0, handler };
         cortex_m::interrupt::free(|cs| {
             *AUDIO_INTERFACE.borrow(cs).borrow_mut() = Some(audio_state);
@@ -201,6 +201,14 @@ impl Hothouse {
         knob_adc.set_resolution(adc::Resolution::SixteenBit);
 
         Self { board, delay, clocks: ccdr.clocks, knob_adc, knobs, toggles, leds, footswitches }
+    }
+
+    pub fn set_audio_handler(&self, handler: AudioHandler) {
+        cortex_m::interrupt::free(|cs| {
+            let mut audio_state = AUDIO_INTERFACE.borrow(cs).borrow_mut();
+            let audio_state = audio_state.as_mut().unwrap();
+            audio_state.handler = handler;
+        });
     }
 
     /// Get a value between 0.0 and 1.0 for the specified
