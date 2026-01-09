@@ -1,7 +1,7 @@
 # Borrowed from the `daisy` crate.
 
 [target.thumbv7em-none-eabihf]
-runner = 'probe-rs run --chip STM32H750VBTx'
+runner = 'probe-rs run --chip=STM32H750VBTx'
 rustflags = [
   "-C",
   "link-arg=-Tlink.x",
